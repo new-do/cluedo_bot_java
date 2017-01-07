@@ -1,18 +1,20 @@
 package hu.karandi.cluedo.bot;
 
 import static java.lang.System.out;
+import static spark.Spark.after;
 import static spark.Spark.exception;
 import static spark.Spark.get;
 import static spark.Spark.port;
 import static spark.Spark.post;
 
+import java.util.LinkedList;
 import java.util.List;
+import java.util.stream.Collectors;
 
 import lombok.Data;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonSyntaxException;
-
 
 public class CluedoApi {
 	
@@ -23,38 +25,43 @@ public class CluedoApi {
 	}
 	
 	public static enum Location implements Card {
-		Kitchen,
-		BallRoom,
+		BedRoom,
+		Billiards,
 		Conservatory,
-		DiningRoom,
-		BilliardRoom,
+		Kitchen,
 		Library,
 		Lounge,
-		Hall,
-		Study
+		Stairs,
+		Studio,
+		TrophyHall
 	}
 
 	public static enum Suspect implements Card {
+		ColMustard,
+		MrsWhite,
+		MsPeacock,
 		MsScarlett,
 		ProfPlum,
-		MrsPeacock,
-		RevGreen,
-		ColMustard,
-		MrsWhite
+		RevGreen
 	}
 	
 	public static enum Weapon implements Card {
 		Candlestick,
-		Dagger,
-		LeadPipe,
+		IcePick,
+		Poison,
+		Poker,
 		Revolver,
-		Rope,
-		Spanner
+		Shears
 	}
 	
 	public static enum QuestionType {
-		Question,
+		Interrogation,
 		Accusation
+	}
+
+	@Data
+	private static class BotDescription {
+		private final String version;
 	}
 
 	@Data
@@ -81,6 +88,11 @@ public class CluedoApi {
 	}
 	
 	@Data
+	private static class Answer {
+		private final Card card;
+	}
+	
+	@Data
 	private static class InformPayload {
 		private final int askedBy;
 		private final Question question;
@@ -89,28 +101,36 @@ public class CluedoApi {
 	}
 	
 	public static void main(String[] args) {
-		port(8001);
+		port(Integer.parseInt(args[0]));
+		final String teamName = args[1];
 		Gson gson = new Gson();
 		
-		get("/name", (req, res) -> "Team Alpha"); //TODO Introduce yourself
+		get("/name", (req, res) -> teamName); //TODO Introduce yourself
 		post("/:" + GAME_ID + "/startGame", (req, res) -> { //TODO Don't cheat
-//			out.println("Start game " + req.params(GAME_ID)); 
-//			StartGamePayload payload = gson.fromJson(req.body(), StartGamePayload.class);
-//			out.println(payload.getCountOfPlayers() + "\t" + payload.getPlayerId());
-//			payload.getWeapons().forEach(out::println);
-//			payload.getLocations().forEach(out::println);
-//			payload.getSuspects().forEach(out::println);
-			return "OK";
-		});
+			StartGamePayload payload = gson.fromJson(req.body(), StartGamePayload.class);
+			List<Card> cards = new LinkedList<>();
+			cards.addAll(payload.getWeapons());
+			cards.addAll(payload.getLocations());
+			cards.addAll(payload.getSuspects());
+			String collect = cards.stream().map(card -> card.name()).collect(Collectors.joining(","));
+			out.println(req.params(GAME_ID) 
+					+ "\t" + "Start game "  
+					+ " "+ payload.getCountOfPlayers() 
+					+ " " + payload.getPlayerId()
+					+ "\t"+ collect);
+			return new BotDescription("0.1");
+		}, gson::toJson);
 		post("/:" + GAME_ID + "/giveAnswer", (req, res) -> { //TODO Don't cheat
-//			out.println("Give answer " + req.params(GAME_ID)); 
-//			GiveAnswerPayload payload = gson.fromJson(req.body(), GiveAnswerPayload.class);
-//			out.print(payload.getAskedBy() + "\t" + payload.getQuestion());
-			return ""; 
-		});
+			GiveAnswerPayload payload = gson.fromJson(req.body(), GiveAnswerPayload.class);
+			out.println(req.params(GAME_ID) 
+					+ "\t" + "Give answer "
+					+ "\t" + payload.getAskedBy() 
+					+ "\t" + payload.getQuestion());
+			return new Answer(Suspect.ColMustard);
+		}, gson::toJson);
 		post("/:" + GAME_ID + "/askQuestion", (req, res) -> { //TODO Play in 3; Play in 6
 //			out.println("Ask question " + req.params(GAME_ID));
-			return new Question(QuestionType.Accusation, Location.BilliardRoom, Suspect.ColMustard, Weapon.LeadPipe);
+			return new Question(QuestionType.Accusation, Location.Billiards, Suspect.ColMustard, Weapon.Revolver);
 		}, gson::toJson);
 		post("/:" + GAME_ID + "/observe", (req, res) -> { //TODO Play in 3; Play in 6
 //			out.println("Observe " + req.params(GAME_ID));
@@ -118,7 +138,9 @@ public class CluedoApi {
 //			out.println(payload.getAskedBy() + "\t" + payload.getQuestion() + " \t" + payload.getAnsweredBy()); // + "\t" + payload.getAnswer());
 			return "OK";
 		});
-		
+		after((req, res) -> {
+			res.header("Access-Control-Allow-Origin", "*");
+		});
 		exception(JsonSyntaxException.class, (ex, req, res) -> {
 		    ex.printStackTrace();
 			res.status(400);
